@@ -6,6 +6,7 @@ import com.xchange.platform.dto.RegisterDTO;
 import com.xchange.platform.entity.User;
 import com.xchange.platform.service.UserService;
 import com.xchange.platform.utils.JwtUtil;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,4 +77,23 @@ public class AuthController {
             return Result.error(e.getMessage());
         }
     }
+
+    /**
+     * 用户退出登录
+     * POST /api/auth/logout
+     */
+    @PostMapping("/logout")
+    @Operation(summary = "退出登录", description = "使当前Token失效，需要携带有效Token")
+    public Result<Void> logout(@RequestAttribute("userId") Long userId) {
+        log.info("用户退出登录请求: userId={}", userId);
+
+        try {
+            userService.logout(userId);
+            return Result.success("退出登录成功");
+        } catch (Exception e) {
+            log.error("退出登录失败: {}", e.getMessage());
+            return Result.error("退出登录失败");
+        }
+    }
+
 }

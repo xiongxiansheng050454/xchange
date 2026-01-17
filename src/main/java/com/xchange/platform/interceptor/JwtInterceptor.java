@@ -1,6 +1,7 @@
 package com.xchange.platform.interceptor;
 
 import com.xchange.platform.utils.JwtUtil;
+import com.xchange.platform.utils.RedisUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -8,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.beans.factory.annotation.Value;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * JWT 认证拦截器
@@ -19,47 +23,78 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class JwtInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
+    private final RedisUtil redisUtil;
+
+    @Value("${jwt.expiration}")
+    private Long expiration; // Token总有效期（毫秒）
+
+    @Value("${jwt.auto-renew-threshold}")
+    private Long autoRenewThreshold; // 自动续期阈值（毫秒），默认建议为expiry的20%
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 1. 获取 Authorization 头
         String authHeader = request.getHeader("Authorization");
 
-        // 2. 验证 Authorization 头是否存在且格式正确
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warn("缺少Token: URI={}", request.getRequestURI());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write("{\"code\":401,\"message\":\"缺少Token\",\"data\":null}");
             return false;
         }
 
-        // 3. 提取 Token（移除 "Bearer " 前缀）
         String token = authHeader.substring(7);
+        Long userId = jwtUtil.getUserIdFromToken(token); // 先解析userId
 
-        // 4. 验证 Token 有效性
+        // 检查Token是否在黑名单中
+        String blackKey = "user:token:blacklist:" + userId;
+        if (redisUtil.hasKey(blackKey)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":401,\"message\":\"Token已失效，请重新登录\",\"data\":null}");
+            return false;
+        }
+
+        // 验证Token有效性
         if (!jwtUtil.validateToken(token)) {
-            log.warn("Token无效或已过期: token={}", token);
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write("{\"code\":401,\"message\":\"Token无效或已过期\",\"data\":null}");
             return false;
         }
 
-        // 5. 解析 Token，获取用户信息
+        // 验证Redis中Token是否存在
+        String redisKey = "user:token:" + userId;
+        String storedToken = (String) redisUtil.get(redisKey);
+        if (storedToken == null || !storedToken.equals(token)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":401,\"message\":\"Token已失效，请重新登录\",\"data\":null}");
+            return false;
+        }
+
+        // ===== 自动续期核心逻辑 =====
+        long remainingTime = redisUtil.getExpireTimeMillis(redisKey);
+
+        // 当剩余时间大于0且小于阈值时，触发续期（避免频繁操作Redis）
+        if (remainingTime > 0 && remainingTime < autoRenewThreshold) {
+            boolean renewed = redisUtil.expire(redisKey, expiration, TimeUnit.MILLISECONDS);
+            if (renewed) {
+                log.info("Token自动续期成功: userId={}, 延长{}小时", userId,
+                        TimeUnit.MILLISECONDS.toHours(expiration));
+            } else {
+                log.warn("Token自动续期失败: userId={}", userId);
+            }
+        }
+
+        // 解析并设置用户信息
         try {
             Claims claims = jwtUtil.parseToken(token);
-            Long userId = claims.get("userId", Long.class);
-            String username = claims.get("username", String.class);
-            String nickname = claims.get("nickname", String.class);
-
-            // 6. 将用户信息存入请求属性（供 Controller 使用）
             request.setAttribute("userId", userId);
-            request.setAttribute("username", username);
-            request.setAttribute("nickname", nickname);
+            request.setAttribute("username", claims.get("username", String.class));
+            request.setAttribute("nickname", claims.get("nickname", String.class));
 
-            log.debug("Token验证成功: userId={}, username={}", userId, username);
-            return true; // 继续执行请求
+            log.debug("Token验证成功: userId={}, username={}", userId, request.getAttribute("username"));
+            return true;
 
         } catch (Exception e) {
             log.error("Token解析异常: {}", e.getMessage());
@@ -68,13 +103,5 @@ public class JwtInterceptor implements HandlerInterceptor {
             response.getWriter().write("{\"code\":401,\"message\":\"Token解析失败\",\"data\":null}");
             return false;
         }
-    }
-
-    @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        // 请求完成后清理
-        request.removeAttribute("userId");
-        request.removeAttribute("username");
-        request.removeAttribute("nickname");
     }
 }

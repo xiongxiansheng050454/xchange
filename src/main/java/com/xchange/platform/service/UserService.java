@@ -2,7 +2,9 @@ package com.xchange.platform.service;
 
 import com.xchange.platform.dto.LoginDTO;
 import com.xchange.platform.dto.RegisterDTO;
+import com.xchange.platform.dto.UpdatePasswordDTO;
 import com.xchange.platform.entity.User;
+import com.xchange.platform.vo.UserInfoVO;
 
 import java.util.Map;
 
@@ -31,4 +33,24 @@ public interface UserService {
      * 根据学号查询用户
      */
     User getByStudentId(String studentId);
+
+    /**
+     * 获取当前用户信息
+     * @param userId 用户ID
+     * @return 用户信息视图对象
+     */
+    UserInfoVO getCurrentUserInfo(Long userId);
+
+    /**
+     * 修改用户密码
+     * @param userId 用户ID
+     * @param updatePasswordDTO 密码修改信息
+     */
+    void updatePassword(Long userId, UpdatePasswordDTO updatePasswordDTO);
+
+    /**
+     * 用户退出登录
+     * @param userId 用户ID
+     */
+    void logout(Long userId);
 }

@@ -42,7 +42,8 @@ minio:
 # JWT 配置
 jwt:
   secret: vG9+7b4JvXnG9zKp3mQ7fR8tVwS2yL5uA9bC1dE6jO5pN8qR2sT4uG7hV1xZ0cM
-  expiration: 86400000  # 24小时（毫秒）
+  expiration: 604800000  # 7天（毫秒）
+  auto-renew-threshold: 86400000  # 续期阈值：1天（毫秒，约为总时间的20%）
   token-header: Authorization
 
 logging:

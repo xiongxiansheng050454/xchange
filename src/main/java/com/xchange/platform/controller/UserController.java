@@ -1,71 +1,64 @@
 package com.xchange.platform.controller;
 
 import com.xchange.platform.common.Result;
-import com.xchange.platform.entity.User;
-import com.xchange.platform.mapper.UserMapper;
+import com.xchange.platform.dto.UpdatePasswordDTO;
+import com.xchange.platform.service.UserService;
+import com.xchange.platform.vo.UserInfoVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-
-import jakarta.servlet.http.HttpServletRequest;
-
-import java.util.Map;
 
 /**
  * 用户相关接口（需要JWT认证）
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/user")
 @RequiredArgsConstructor
+@Tag(name = "用户管理", description = "用户信息相关接口")
 public class UserController {
 
-    private final UserMapper userMapper;
+    private final UserService userService;
 
     /**
      * 获取当前登录用户信息
      * GET /api/user/info
      */
     @GetMapping("/info")
-    public Result<User> getCurrentUserInfo(HttpServletRequest request) {
-        // 从请求属性中获取用户ID（由JwtInterceptor设置）
-        Long userId = (Long) request.getAttribute("userId");
+    @Operation(summary = "获取当前用户信息", description = "需要携带有效的JWT Token")
+    public Result<UserInfoVO> getCurrentUserInfo(
+            @RequestAttribute("userId") Long userId) {
 
-        if (userId == null) {
-            return Result.error("用户信息获取失败，请重新登录");
+        try {
+            UserInfoVO userInfo = userService.getCurrentUserInfo(userId);
+            return Result.success(userInfo);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
         }
-
-        // 查询用户信息
-        User user = userMapper.selectById(userId);
-
-        if (user == null) {
-            return Result.error("用户不存在");
-        }
-
-        return Result.success(user);
     }
 
     /**
-     * 更新用户昵称（演示请求属性使用）
-     * PUT /api/user/nickname
+     * 修改用户密码
+     * PUT /api/user/password
      */
-    @PutMapping("/nickname")
-    public Result<Void> updateNickname(@RequestBody Map<String, String> params, HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        String newNickname = params.get("nickname");
+    @PutMapping("/password")
+    @Operation(summary = "修改密码", description = "验证旧密码后更新为新密码")
+    public Result<Void> updatePassword(
+            @RequestAttribute("userId") Long userId,
+            @Valid @RequestBody UpdatePasswordDTO updatePasswordDTO) {
 
-        if (newNickname == null || newNickname.trim().isEmpty()) {
-            return Result.error("昵称不能为空");
-        }
+        log.info("用户修改密码请求: userId={}", userId);
 
-        User user = new User();
-        user.setId(userId);
-        user.setNickname(newNickname);
-
-        int updateCount = userMapper.updateById(user);
-
-        if (updateCount > 0) {
-            return Result.success("昵称修改成功");
-        } else {
-            return Result.error("昵称修改失败");
+        try {
+            userService.updatePassword(userId, updatePasswordDTO);
+            return Result.success("密码修改成功，请重新登录");
+        } catch (RuntimeException e) {
+            log.warn("密码修改失败: {}", e.getMessage());
+            return Result.error(e.getMessage());
         }
     }
+
 }
