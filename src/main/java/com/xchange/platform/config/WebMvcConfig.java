@@ -22,12 +22,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/auth/login",       // 登录
 
                         // ===== Swagger 文档 =====
-                        "/swagger-ui/**",
-                        "/swagger-ui.html",
-                        "/v3/api-docs/**",
-                        "/v3/api-docs.yaml",
-                        "/doc.html",
-                        "/webjars/**",
+                        "/v3/api-docs/**",      // OpenAPI 定义接口
+                        "/v3/api-docs.yaml",    // OpenAPI YAML格式
+                        "/swagger-ui/**",       // Swagger UI 静态资源
+                        "/swagger-ui.html",     // Swagger UI 首页
+                        "/doc.html",            // Knife4j增强UI
+                        "/webjars/**",          // Swagger 依赖的静态资源
 
                         // ===== 静态资源 =====
                         "/static/**",
