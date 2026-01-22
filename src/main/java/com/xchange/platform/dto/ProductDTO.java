@@ -2,6 +2,8 @@ package com.xchange.platform.dto;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
+import java.util.List;
 import java.math.BigDecimal;
 
 @Data
@@ -23,10 +25,6 @@ public class ProductDTO {
     @Min(value = 0, message = "库存不能小于0")
     @Max(value = 9999, message = "库存不能大于9999")
     private Integer stock;
-
-    @NotBlank(message = "封面图不能为空")
-    @Pattern(regexp = "^https?://.+", message = "封面图URL格式不正确")
-    private String coverImage;
 
     private String campusLocation; // 校区位置
 }

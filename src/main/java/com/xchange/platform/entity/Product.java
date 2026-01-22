@@ -22,7 +22,7 @@ public class Product {
     private String coverImage;     // 封面图URL
     private Integer status;        // 状态：1上架 0下架
     private String campusLocation; // 校区位置
-    private Long sellerId;
+    private Long sellerId;         // 卖家ID
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

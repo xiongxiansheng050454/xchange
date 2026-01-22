@@ -19,7 +19,13 @@ public class SwaggerConfig {
                 // 添加JWT安全方案
                 .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
                 .components(new Components()
-                        .addSecuritySchemes("Bearer Authentication", createAPIKeyScheme()))
+                        .addSecuritySchemes("Bearer Authentication", createAPIKeyScheme())
+                        // 支持文件上传
+                        .addParameters("multipartFile", new io.swagger.v3.oas.models.parameters.Parameter()
+                                .in("formData")
+                                .name("files")
+                                .schema(new io.swagger.v3.oas.models.media.Schema<>().type("array")
+                                        .items(new io.swagger.v3.oas.models.media.Schema<>().type("string").format("binary")))))
                 .info(new Info()
                         .title("X-Change 校园二手交易平台 API")
                         .description("基于Spring Boot 3.x + JWT + Redis的校园二手交易系统")

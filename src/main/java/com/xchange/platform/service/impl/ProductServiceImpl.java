@@ -7,6 +7,7 @@ import com.xchange.platform.dto.ProductQueryDTO;
 import com.xchange.platform.dto.UpdateProductDTO;
 import com.xchange.platform.entity.Product;
 import com.xchange.platform.mapper.ProductMapper;
+import com.xchange.platform.service.ProductImageService;
 import com.xchange.platform.service.ProductService;
 import com.xchange.platform.vo.ProductVO;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import java.util.Objects;
 public class ProductServiceImpl implements ProductService {
 
     private final ProductMapper productMapper;
+    private final ProductImageService productImageService;
 
     /**
      * 实体转换为VO（抽取公共方法）
@@ -36,9 +38,9 @@ public class ProductServiceImpl implements ProductService {
                 .description(product.getDescription())
                 .price(product.getPrice())
                 .stock(product.getStock())
-                .coverImage(product.getCoverImage())
                 .campusLocation(product.getCampusLocation())
                 .status(product.getStatus())
+                .sellerId(product.getSellerId())
                 .createTime(product.getCreateTime())
                 .build();
     }
@@ -136,21 +138,46 @@ public class ProductServiceImpl implements ProductService {
         return convertToVO(product);
     }
 
+    /**
+     * 下架商品（逻辑删除）+ 级联删除图片
+     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void removeProduct(Long sellerId, Long productId) {
-        log.info("下架商品请求: sellerId={}, productId={}", sellerId, productId);
+        log.info("删除商品请求: sellerId={}, productId={}", sellerId, productId);
 
-        // 1. 查询商品并校验归属
+        // 1. 校验商品归属权
         validateProductOwnership(sellerId, productId);
 
-        // 2. 执行逻辑删除（MyBatis-Plus会自动设置deleted=1）
-        int deleteCount = productMapper.deleteById(productId);
-        if (deleteCount != 1) {
-            log.error("商品下架失败: productId={}", productId);
-            throw new RuntimeException("商品下架失败，请稍后重试");
-        }
+        try {
+            // 2. 先物理删除MinIO中的图片文件
+            log.info("步骤1/3: 删除商品图片文件...");
+            int deletedFiles = productImageService.deleteProductImageFiles(productId);
+            log.info("图片文件删除完成: count={}", deletedFiles);
 
-        log.info("商品下架成功: productId={}, sellerId={}", productId, sellerId);
+            // 3. 再逻辑删除数据库中的图片记录
+            log.info("步骤2/3: 删除商品图片记录...");
+            productImageService.deleteProductImages(productId);
+            log.info("图片记录删除完成");
+
+            // 4. 最后逻辑删除商品
+            log.info("步骤3/3: 删除商品记录...");
+            int deleteCount = productMapper.deleteById(productId); // MyBatis-Plus逻辑删除
+            if (deleteCount != 1) {
+                log.error("商品删除失败: productId={}", productId);
+                throw new RuntimeException("商品删除失败，请稍后重试");
+            }
+
+            log.info("商品删除成功: productId={}, sellerId={}, deletedImages={}",
+                    productId, sellerId, deletedFiles);
+
+        } catch (RuntimeException e) {
+            log.error("商品删除失败: productId={}, error={}", productId, e.getMessage());
+            throw e; // 触发事务回滚
+        } catch (Exception e) {
+            log.error("商品删除异常: productId={}", productId, e);
+            throw new RuntimeException("删除失败，请稍后重试");
+        }
     }
 
     @Override
@@ -218,9 +245,9 @@ public class ProductServiceImpl implements ProductService {
         product.setDescription(productDTO.getDescription());
         product.setPrice(productDTO.getPrice());
         product.setStock(productDTO.getStock());
-        product.setCoverImage(productDTO.getCoverImage());
         product.setCampusLocation(productDTO.getCampusLocation());
         product.setStatus(1); // 默认上架状态
+        product.setSellerId(sellerId);
 
         // 2. 插入数据库（MyBatis-Plus自动填充createTime/updateTime）
         int insertCount = productMapper.insert(product);

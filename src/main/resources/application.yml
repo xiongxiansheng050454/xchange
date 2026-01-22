@@ -19,6 +19,25 @@ spring:
       port: 6379
       password:
       database: 0
+  # 启用定时任务
+  task:
+    scheduling:
+      enabled: true
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB       # 单个文件最大5MB
+      max-request-size: 50MB   # 总请求最大50MB
+      resolve-lazily: true     # 延迟解析大文件
+
+# 任务清理配置
+task:
+  cleanup:
+    orphan-files:
+      enabled: true
+      cron: "0 0 2 * * ?"  # 每天凌晨2点执行
+      expire-days: 1        # 清理1天前的孤儿文件
 
 # MyBatis-Plus 配置
 mybatis-plus:
@@ -34,10 +53,10 @@ mybatis-plus:
 
 # MinIO 配置
 minio:
-  endpoint: http://localhost:9000
-  access-key: minioadmin
-  secret-key: minioadmin
-  bucket-name: xchange
+  endpoint: http://localhost:9000   # MinIO服务地址
+  access-key: xchange_admin         # 管理员账号
+  secret-key: xchange_admin123      # 管理员密码
+  bucket-name: xchange-files        # 默认Bucket名称
 
 # JWT 配置
 jwt:
