@@ -2,11 +2,13 @@ package com.xchange.platform.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.xchange.platform.document.ProductDocument;
 import com.xchange.platform.dto.ProductDTO;
 import com.xchange.platform.dto.ProductQueryDTO;
 import com.xchange.platform.dto.UpdateProductDTO;
 import com.xchange.platform.entity.Product;
 import com.xchange.platform.mapper.ProductMapper;
+import com.xchange.platform.repository.ProductESRepository;
 import com.xchange.platform.service.ProductImageService;
 import com.xchange.platform.service.ProductService;
 import com.xchange.platform.vo.ProductVO;
@@ -27,6 +29,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductMapper productMapper;
     private final ProductImageService productImageService;
+    private final ProductESRepository productESRepository;
 
     /**
      * 实体转换为VO（抽取公共方法）
@@ -146,22 +149,30 @@ public class ProductServiceImpl implements ProductService {
     public void removeProduct(Long sellerId, Long productId) {
         log.info("删除商品请求: sellerId={}, productId={}", sellerId, productId);
 
-        // 1. 校验商品归属权
+        // 校验商品归属权
         validateProductOwnership(sellerId, productId);
 
         try {
-            // 2. 先物理删除MinIO中的图片文件
-            log.info("步骤1/3: 删除商品图片文件...");
+            // 先物理删除MinIO中的图片文件
+            log.info("删除商品图片文件...");
             int deletedFiles = productImageService.deleteProductImageFiles(productId);
             log.info("图片文件删除完成: count={}", deletedFiles);
 
-            // 3. 再逻辑删除数据库中的图片记录
-            log.info("步骤2/3: 删除商品图片记录...");
+            // 再逻辑删除数据库中的图片记录
+            log.info("删除商品图片记录...");
             productImageService.deleteProductImages(productId);
             log.info("图片记录删除完成");
 
-            // 4. 最后逻辑删除商品
-            log.info("步骤3/3: 删除商品记录...");
+            // 从Elasticsearch删除
+            try {
+                productESRepository.deleteById(productId);
+                log.info("ES文档删除成功: productId={}", productId);
+            } catch (Exception e) {
+                log.error("ES文档删除失败: productId={}, error={}", productId, e.getMessage());
+            }
+
+            // 最后逻辑删除商品
+            log.info("删除商品记录...");
             int deleteCount = productMapper.deleteById(productId); // MyBatis-Plus逻辑删除
             if (deleteCount != 1) {
                 log.error("商品删除失败: productId={}", productId);
@@ -259,6 +270,38 @@ public class ProductServiceImpl implements ProductService {
         log.info("商品发布成功: productId={}, sellerId={}", product.getId(), sellerId);
 
         // 3. 转换为VO并返回（脱敏）
-        return convertToVO(product);
+        ProductVO productVO = convertToVO(product);
+
+        // 4. 同步到Elasticsearch（异步执行，不影响主流程）
+        try {
+            ProductDocument document = convertToDocument(productVO);
+            productESRepository.save(document);
+            log.info("商品已同步到ES: productId={}", product.getId());
+        } catch (Exception e) {
+            log.error("同步到ES失败: productId={}, error={}", product.getId(), e.getMessage());
+            // 不抛出异常，避免影响主流程（可后续补偿）
+        }
+
+        return productVO;
+    }
+
+    /**
+     * ProductVO 转换为 ProductDocument
+     */
+    private ProductDocument convertToDocument(ProductVO productVO) {
+        return ProductDocument.builder()
+                .id(productVO.getId())
+                .name(productVO.getName())
+                .description(productVO.getDescription())
+                .price(productVO.getPrice())
+                .stock(productVO.getStock())
+                .campusLocation(productVO.getCampusLocation())
+                .status(productVO.getStatus())
+                .sellerId(productVO.getSellerId())
+                .coverImageUrl(productVO.getCoverImageUrl())
+                .detailImageUrls(productVO.getDetailImageUrls())
+                .createTime(productVO.getCreateTime())
+                .searchBoost(1)  // 默认权重
+                .build();
     }
 }

@@ -1,9 +1,11 @@
 package com.xchange.platform.dto;
 
 import jakarta.validation.constraints.Min;
+import lombok.Builder;
 import lombok.Data;
 
 @Data
+@Builder
 public class ProductQueryDTO {
     @Min(value = 1, message = "页码必须大于0")
     private Integer pageNum = 1;    // 当前页码（默认第1页）

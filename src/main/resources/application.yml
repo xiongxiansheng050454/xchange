@@ -19,10 +19,6 @@ spring:
       port: 6379
       password:
       database: 0
-  # 启用定时任务
-  task:
-    scheduling:
-      enabled: true
 
   servlet:
     multipart:
@@ -68,3 +64,15 @@ jwt:
 logging:
   level:
     com.xchange.platform: debug
+
+# Elasticsearch配置
+elasticsearch:
+  host: localhost
+  port: 9200
+  scheme: http
+  username: elastic
+  password: "050454"
+  connect-timeout: 5000
+  socket-timeout: 30000
+  max-connections: 10
+  max-connections-per-route: 5
