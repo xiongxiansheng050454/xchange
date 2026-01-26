@@ -3,7 +3,7 @@ package com.xchange.platform.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.xchange.platform.dto.CreateOrderDTO;
 import com.xchange.platform.dto.OrderQueryDTO;
-import com.xchange.platform.statemachine.OrderStates;
+import com.xchange.platform.orderstate.OrderStates;
 import com.xchange.platform.vo.OrderListVO;
 import com.xchange.platform.vo.OrderVO;
 

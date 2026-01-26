@@ -64,6 +64,10 @@ jwt:
 logging:
   level:
     com.xchange.platform: debug
+    org.apache.tomcat.websocket: DEBUG
+    org.springframework.web.socket: DEBUG
+    org.springframework.web.socket.handler: DEBUG
+    org.springframework.web.socket.server: DEBUG
 
 # Elasticsearch配置
 elasticsearch:

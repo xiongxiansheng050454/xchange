@@ -4,8 +4,7 @@ import com.xchange.platform.entity.Order;
 import com.xchange.platform.entity.Product;
 import com.xchange.platform.mapper.OrderMapper;
 import com.xchange.platform.mapper.ProductMapper;
-import com.xchange.platform.service.OrderStateMachineService;
-import com.xchange.platform.statemachine.OrderEvents;
+import com.xchange.platform.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.InitializingBean; // 新增
@@ -25,7 +24,7 @@ public class PaymentTimeoutListener implements org.springframework.data.redis.co
     private final RedisMessageListenerContainer redisMessageListenerContainer; // 自动注入
     private final OrderMapper orderMapper;
     private final ProductMapper productMapper;
-    private final OrderStateMachineService stateMachineService;
+    private final OrderService orderService;
 
     /**
      * 初始化时注册监听器
@@ -72,16 +71,12 @@ public class PaymentTimeoutListener implements org.springframework.data.redis.co
                 return;
             }
 
-            // 3. 触发取消事件（通过状态机）
-            boolean cancelResult = stateMachineService.sendEvent(orderId, OrderEvents.CANCEL);
+            // 3. 触发取消事件
+            orderService.cancelOrder(order.getBuyerId(), orderId);
 
-            if (cancelResult) {
-                // 4. 回滚库存
-                rollbackStock(order.getProductId(), order.getQuantity());
-                log.info("【支付超时】订单已自动取消，库存已回滚: orderId={}", orderId);
-            } else {
-                log.error("【支付超时】取消订单失败: orderId={}", orderId);
-            }
+            // 4. 回滚库存
+            rollbackStock(order.getProductId(), order.getQuantity());
+            log.info("【支付超时】订单已自动取消，库存已回滚: orderId={}", orderId);
 
         } catch (Exception e) {
             log.error("【支付超时处理异常】orderId={}, error={}", orderId, e.getMessage(), e);

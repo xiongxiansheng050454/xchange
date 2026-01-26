@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket测试</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        #messages { border: 1px solid #ccc; height: 400px; overflow-y: auto; padding: 10px; margin: 10px 0; }
+        .message { margin: 5px 0; padding: 5px; border-bottom: 1px solid #eee; }
+        .sent { color: blue; }
+        .received { color: green; }
+    </style>
+</head>
+<body>
+<h2>WebSocket 测试客户端</h2>
+<div>
+    <input type="text" id="token" placeholder="输入JWT Token" size="50">
+    <button onclick="connect()">连接</button>
+    <button onclick="disconnect()">断开</button>
+    <button onclick="connectMinimal()">测试最小化端点</button>
+    <span id="status" style="margin-left: 20px; color: red;">未连接</span>
+</div>
+
+<div id="messages"></div>
+
+<div>
+    <input type="text" id="messageInput" placeholder="输入消息" size="40">
+    <button onclick="sendMessage()">发送</button>
+    <button onclick="sendPing()">发送心跳</button>
+    <button onclick="subscribeOrder()">订阅订单</button>
+</div>
+
+<script>
+    let ws = null;
+    const messagesDiv = document.getElementById('messages');
+
+    function log(msg, type = 'received') {
+        const div = document.createElement('div');
+        div.className = `message ${type}`;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function connect() {
+        const token = document.getElementById('token').value;
+        if (!token) {
+            alert('请输入Token');
+            return;
+        }
+
+        // 动态获取当前协议、主机和端口
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname;
+        const port = window.location.port || '8080';
+
+        // 构建WebSocket URL（关键：确保路径正确）
+        const wsUrl = `${protocol}//${host}:${port}/ws/notify?token=${token}`;
+
+        log(`正在连接: ${wsUrl}`);
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById('status').textContent = '已连接';
+            document.getElementById('status').style.color = 'green';
+            log('WebSocket连接成功', 'received');
+        };
+
+        ws.onmessage = (event) => {
+            log(`收到: ${event.data}`, 'received');
+        };
+
+        ws.onerror = (error) => {
+            log(`错误: ${error}`, 'received');
+        };
+
+        ws.onclose = () => {
+            document.getElementById('status').textContent = '已断开';
+            document.getElementById('status').style.color = 'red';
+            log('WebSocket连接关闭', 'received');
+        };
+    }
+
+    function connectMinimal() {
+        const wsUrl = `ws://localhost:8080/ws/minimal`; // 无需token
+        log(`正在连接最小化端点: ${wsUrl}`);
+
+        const wsMinimal = new WebSocket(wsUrl);
+        wsMinimal.onopen = () => log('✅ 最小化端点连接成功！', 'received');
+        wsMinimal.onmessage = (e) => log(`收到: ${e.data}`, 'received');
+        wsMinimal.onerror = (e) => log(`最小化端点错误: ${e}`, 'received');
+        wsMinimal.onclose = () => log('最小化端点关闭', 'received');
+    }
+
+    function disconnect() {
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+    }
+
+    function sendMessage() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('请先连接WebSocket');
+            return;
+        }
+        const input = document.getElementById('messageInput');
+        const data = {
+            type: 'BUSINESS',
+            action: 'test',
+            data: input.value
+        };
+        ws.send(JSON.stringify(data));
+        log(`发送: ${JSON.stringify(data)}`, 'sent');
+        input.value = '';
+    }
+
+    function sendPing() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const ping = { type: 'PING', action: '', data: '' };
+        ws.send(JSON.stringify(ping));
+        log('发送: PING', 'sent');
+    }
+
+    function subscribeOrder() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('请先连接WebSocket');
+            return;
+        }
+        const orderId = prompt('请输入订单ID:');
+        if (orderId) {
+            const msg = {
+                type: 'BUSINESS',
+                action: 'subscribe_order',
+                data: orderId
+            };
+            ws.send(JSON.stringify(msg));
+            log(`发送: ${JSON.stringify(msg)}`, 'sent');
+        }
+    }
+</script>
+</body>
+</html>

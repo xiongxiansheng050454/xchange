@@ -1,4 +1,4 @@
-package com.xchange.platform.statemachine;
+package com.xchange.platform.orderstate;
 
 /**
  * 订单状态枚举

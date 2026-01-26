@@ -22,7 +22,7 @@ public class Result<T> {
     }
 
     public static <T> Result<T> success(String message) {
-        return new Result<>(400, message, null);
+        return new Result<>(200, message, null);
     }
 
     // 失败响应
