@@ -1,6 +1,7 @@
 package com.xchange.platform.utils;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.Refresh;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
@@ -16,7 +17,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -31,6 +34,38 @@ public class ElasticsearchUtil {
 
     private final ElasticsearchClient client;
     private static final String PRODUCT_INDEX = "xchange_products";
+
+    /**
+     * 更新商品库存（即时同步 - 安全版）
+     * @param productId 商品ID
+     * @param newStock 新库存
+     */
+    public void updateProductStock(Long productId, Integer newStock) {
+        try {
+            log.info("【ES库存同步开始】productId={}, newStock={}", productId, newStock);
+
+            // 1. 构建更新Map（只包含需要更新的字段）
+            Map<String, Object> updateDoc = new HashMap<>();
+            updateDoc.put("stock", newStock);
+            updateDoc.put("updateTime", java.time.LocalDateTime.now());
+
+            // 2. 执行更新（使用Refresh.WaitFor确保可见性）
+            UpdateResponse<Map> response = client.update(u -> u
+                            .index(PRODUCT_INDEX)
+                            .id(productId.toString())
+                            .doc(updateDoc)
+                            .retryOnConflict(5) // 增加到5次重试
+                            .refresh(Refresh.WaitFor),
+                    Map.class // 使用Map.class避免反序列化问题
+            );
+
+            log.info("【ES库存同步成功】productId={}, newStock={}, result={}, version={}",
+                    productId, newStock, response.result().jsonValue(), response.version());
+
+        } catch (Exception e) {
+            log.error("【ES库存同步异常】productId={}, error={}", productId, e.getMessage(), e);
+        }
+    }
 
     /**
      * 检查索引是否存在

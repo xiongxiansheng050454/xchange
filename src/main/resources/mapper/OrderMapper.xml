@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xchange.platform.mapper.OrderMapper">
+
+    <!-- 查询我买到的订单 -->
+    <select id="selectBuyerOrdersWithDetails" resultType="com.xchange.platform.vo.OrderListVO">
+        SELECT
+        o.id, o.order_no, o.item_id, p.name as product_name, p.cover_image as product_cover_image,
+        o.seller_id, u_seller.nickname as seller_nickname,
+        o.buyer_id, u_buyer.nickname as buyer_nickname,
+        o.price, o.status, o.create_time
+        FROM tb_order o
+        LEFT JOIN tb_product p ON o.item_id = p.id
+        LEFT JOIN tb_user u_seller ON o.seller_id = u_seller.id
+        LEFT JOIN tb_user u_buyer ON o.buyer_id = u_buyer.id
+        WHERE o.buyer_id = #{buyerId}
+        AND o.deleted = 0
+        <if test="status != null and status != ''">
+            AND o.status = #{status}
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="productName != null and productName != ''">
+            AND p.name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        <if test="startTime != null">
+            AND o.create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND o.create_time &lt;= #{endTime}
+        </if>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'price'">o.total_price</when>
+            <otherwise>o.create_time</otherwise>
+        </choose>
+        ${asc ? 'ASC' : 'DESC'}
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计我买到的订单总数 -->
+    <select id="countBuyerOrders" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM tb_order o
+        LEFT JOIN tb_product p ON o.id = p.id
+        WHERE o.buyer_id = #{buyerId}
+        AND o.deleted = 0
+        <if test="status != null and status != ''">
+            AND o.status = #{status}
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="productName != null and productName != ''">
+            AND p.name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        <if test="startTime != null">
+            AND o.create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND o.create_time &lt;= #{endTime}
+        </if>
+    </select>
+
+    <!-- 查询我卖的订单 -->
+    <select id="selectSellerOrdersWithDetails" resultType="com.xchange.platform.vo.OrderListVO">
+        SELECT
+        o.id, o.order_no, o.item_id, p.name as product_name, p.cover_image as product_cover_image,
+        o.seller_id, u_seller.nickname as seller_nickname,
+        o.buyer_id, u_buyer.nickname as buyer_nickname,
+        o.price, o.status, o.create_time
+        FROM tb_order o
+        LEFT JOIN tb_product p ON o.item_id = p.id
+        LEFT JOIN tb_user u_seller ON o.seller_id = u_seller.id
+        LEFT JOIN tb_user u_buyer ON o.buyer_id = u_buyer.id
+        WHERE o.seller_id = #{sellerId}
+        AND o.deleted = 0
+        <if test="status != null and status != ''">
+            AND o.status = #{status}
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="productName != null and productName != ''">
+            AND p.name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        <if test="startTime != null">
+            AND o.create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND o.create_time &lt;= #{endTime}
+        </if>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'price'">o.total_price</when>
+            <otherwise>o.create_time</otherwise>
+        </choose>
+        ${asc ? 'ASC' : 'DESC'}
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计我卖的订单总数 -->
+    <select id="countSellerOrders" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM tb_order o
+        LEFT JOIN tb_product p ON o.item_id = p.id
+        WHERE o.seller_id = #{sellerId}
+        AND o.deleted = 0
+        <if test="status != null and status != ''">
+            AND o.status = #{status}
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="productName != null and productName != ''">
+            AND p.name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        <if test="startTime != null">
+            AND o.create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND o.create_time &lt;= #{endTime}
+        </if>
+    </select>
+</mapper>

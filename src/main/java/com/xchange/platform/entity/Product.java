@@ -24,6 +24,11 @@ public class Product {
     private String campusLocation; // 校区位置
     private Long sellerId;         // 卖家ID
 
+    // ===== 乐观锁版本号（核心字段） =====
+    @Version
+    @TableField(fill = FieldFill.INSERT)
+    private Integer version;       // 版本号，每次更新+1
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

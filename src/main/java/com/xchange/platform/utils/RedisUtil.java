@@ -3,6 +3,8 @@ package com.xchange.platform.utils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -63,4 +65,40 @@ public class RedisUtil {
         return redisTemplate.getExpire(key, TimeUnit.MILLISECONDS);
     }
 
+    // ===== List操作方法 =====
+
+    /**
+     * 从右侧插入元素（RPUSH）
+     */
+    public Long lRightPush(String key, Object value) {
+        return redisTemplate.opsForList().rightPush(key, value);
+    }
+
+    /**
+     * 批量从右侧插入元素
+     */
+    public Long lRightPushAll(String key, Object... values) {
+        return redisTemplate.opsForList().rightPushAll(key, values);
+    }
+
+    /**
+     * 获取列表长度
+     */
+    public Long lSize(String key) {
+        return redisTemplate.opsForList().size(key);
+    }
+
+    /**
+     * 获取列表指定范围元素（0, -1表示全部）
+     */
+    public List<Object> lRange(String key, long start, long end) {
+        return redisTemplate.opsForList().range(key, start, end);
+    }
+
+    /**
+     * 移除并返回左侧第一个元素（LPOP）
+     */
+    public Object lLeftPop(String key) {
+        return redisTemplate.opsForList().leftPop(key);
+    }
 }

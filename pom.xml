@@ -33,6 +33,13 @@
     <!-- 依赖声明 -->
     <dependencies>
 
+        <!-- 订单状态机 -->
+        <dependency>
+            <groupId>org.springframework.statemachine</groupId>
+            <artifactId>spring-statemachine-starter</artifactId>
+            <version>3.2.1</version>
+        </dependency>
+
         <!-- Spring Data Elasticsearch -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

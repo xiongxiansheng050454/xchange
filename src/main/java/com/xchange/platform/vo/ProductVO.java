@@ -1,5 +1,9 @@
 package com.xchange.platform.vo;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,6 +18,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "商品视图对象")
+@JsonIgnoreProperties(ignoreUnknown = true) // 忽略未知字段
+@JsonInclude(JsonInclude.Include.NON_NULL) // 不序列化null值
 public class ProductVO {
     @Schema(description = "商品ID")
     private Long id;
@@ -46,5 +52,11 @@ public class ProductVO {
     private List<String> detailImageUrls;
 
     @Schema(description = "创建时间")
+    @JsonProperty("createTime")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
+
+    // 添加版本号字段（ES内部版本）
+    @JsonProperty("_version")
+    private Long version;
 }
