@@ -14,12 +14,14 @@ import com.xchange.platform.mapper.UserMapper;
 import com.xchange.platform.orderstate.OrderEvents;
 import com.xchange.platform.orderstate.OrderStates;
 import com.xchange.platform.service.OrderService;
+import com.xchange.platform.service.StockService;
 import com.xchange.platform.utils.RedisUtil;
 import com.xchange.platform.vo.OrderListVO;
 import com.xchange.platform.vo.OrderVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+
+import static java.lang.Math.min;
 
 /**
  * 订单服务实现（枚举+乐观锁）
@@ -46,6 +50,7 @@ public class OrderServiceImpl implements OrderService {
     private final UserMapper userMapper;
     private final RedisUtil redisUtil;
     private final ApplicationEventPublisher eventPublisher;
+    private final StockService stockService;
 
     // ==================== 状态流转规则定义 ====================
     // 定义：当前状态 -> 允许的事件
@@ -63,47 +68,78 @@ public class OrderServiceImpl implements OrderService {
     // ==================== 核心接口：下单 ====================
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(timeout = 60, rollbackFor = Exception.class)
     public OrderVO createOrder(Long buyerId, CreateOrderDTO createOrderDTO) {
         log.info("【乐观锁-下单开始】buyerId={}, productId={}, quantity={}",
                 buyerId, createOrderDTO.getProductId(), createOrderDTO.getQuantity());
 
-        long startTime = System.currentTimeMillis();
+        Long productId = createOrderDTO.getProductId();
+        Integer quantity = createOrderDTO.getQuantity();
+
+        // 1. 参数校验
+        validateCreateOrderDTO(createOrderDTO);
+
+        // 2. 查询商品
+        Product product = productMapper.selectById(createOrderDTO.getProductId());
+        if (product == null) {
+            throw new RuntimeException("商品不存在或已下架");
+        }
+        validateProduct(product, createOrderDTO.getQuantity());
+
+        // 3. 【核心】Redis Lua原子扣库存
+        Long deductResult = stockService.deductStock(productId, quantity);
+
+        if (deductResult == -1) {
+            // Redis无库存数据，尝试预热后重试，或降级到数据库乐观锁
+            log.warn("Redis库存未初始化，尝试预热: productId={}", productId);
+            stockService.preloadStock(productId, product.getStock());
+
+            // 重试一次
+            deductResult = stockService.deductStock(productId, quantity);
+            if (deductResult == -1) {
+                throw new RuntimeException("库存服务异常，请稍后重试");
+            }
+        }
+
+        if (deductResult == 0) {
+            throw new RuntimeException("库存不足，仅剩" + stockService.getStock(productId) + "件");
+        }
+
+        // 扣减成功，deductResult为剩余库存
+        log.info("Redis扣库存成功: productId={}, remaining={}", productId, deductResult);
 
         try {
-            // 1. 参数校验
-            validateCreateOrderDTO(createOrderDTO);
-
-            // 2. 查询商品
-            Product product = productMapper.selectById(createOrderDTO.getProductId());
-            if (product == null) {
-                throw new RuntimeException("商品不存在或已下架");
-            }
-            validateProduct(product, createOrderDTO.getQuantity());
-
-            // 3. 乐观锁扣减库存（带重试）
-            deductStockWithOptimisticLock(product.getId(), createOrderDTO.getQuantity());
-
-            // 4. 生成订单（初始状态：待付款，version=0）
+            // 4. 创建订单（数据库操作）
             Order order = buildOrder(buyerId, product, createOrderDTO);
             orderMapper.insert(order);
 
-            // 5. 设置支付超时任务（30分钟）
-            schedulePaymentTimeout(order.getId());
+            // 5. 异步同步库存到MySQL（最终一致性）
+            // 发送消息到MQ或@Async异步更新MySQL库存
+            asyncUpdateMySQLStock(productId, deductResult.intValue());
 
-            log.info("【下单成功】orderId={}, orderNo={}, status={}, costTime={}ms",
-                    order.getId(), order.getOrderNo(),
-                    OrderStates.PENDING_PAYMENT.name(),
-                    System.currentTimeMillis() - startTime);
+            // 6. 设置支付超时（原有逻辑）
+            schedulePaymentTimeout(order.getId());
 
             return convertToVO(order, product, buyerId);
 
-        } catch (RuntimeException e) {
-            log.error("【下单失败】buyerId={}, error={}", buyerId, e.getMessage());
-            throw e;
         } catch (Exception e) {
-            log.error("【下单异常】buyerId={}, error={}", buyerId, e.getMessage(), e);
-            throw new RuntimeException("系统繁忙，请稍后重试");
+            // 7. 订单创建失败，回滚Redis库存
+            log.error("订单创建失败，回滚库存: productId={}, error={}", productId, e.getMessage());
+            stockService.rollbackStock(productId, quantity);
+            throw e;
+        }
+    }
+
+    @Async("asyncExecutor")
+    public void asyncUpdateMySQLStock(Long productId, Integer newStock) {
+        try {
+            LambdaUpdateWrapper<Product> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(Product::getId, productId)
+                    .set(Product::getStock, newStock);
+            productMapper.update(null, wrapper);
+            log.info("异步同步库存到MySQL: productId={}, newStock={}", productId, newStock);
+        } catch (Exception e) {
+            log.error("同步库存到MySQL失败: productId={}, error={}", productId, e.getMessage());
         }
     }
 
@@ -361,44 +397,6 @@ public class OrderServiceImpl implements OrderService {
         if (product.getPrice() == null || product.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("商品价格异常");
         }
-    }
-
-    /**
-     * 乐观锁扣减库存（重试3次）
-     */
-    private void deductStockWithOptimisticLock(Long productId, Integer quantity) {
-        for (int retry = 0; retry < 3; retry++) {
-            Product product = productMapper.selectById(productId);
-
-            if (product.getStock() < quantity) {
-                throw new RuntimeException("库存不足，仅剩" + product.getStock() + "件");
-            }
-
-            LambdaUpdateWrapper<Product> wrapper = new LambdaUpdateWrapper<>();
-            wrapper.eq(Product::getId, productId)
-                    .eq(Product::getVersion, product.getVersion())
-                    .ge(Product::getStock, quantity)
-                    .setSql("stock = stock - {0}", quantity)
-                    .set(Product::getVersion, product.getVersion() + 1);
-
-            int updateCount = productMapper.update(null, wrapper);
-
-            if (updateCount > 0) {
-                Integer newStock = product.getStock() - quantity;
-                eventPublisher.publishEvent(new StockUpdatedEvent(productId, newStock));
-                log.info("【乐观锁扣减成功】productId={}, quantity={}, version={}",
-                        productId, quantity, product.getVersion());
-                return;
-            }
-
-            // 重试等待
-            try {
-                Thread.sleep((long) (Math.pow(2, retry) * 10));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        throw new RuntimeException("库存扣减失败，请重试");
     }
 
     private Order buildOrder(Long buyerId, Product product, CreateOrderDTO dto) {

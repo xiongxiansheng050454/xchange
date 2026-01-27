@@ -3,12 +3,18 @@ package com.xchange.platform.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 创建订单请求DTO
  */
 @Data
+@Builder
+@NoArgsConstructor          // 添加：无参构造函数（Jackson必需）
+@AllArgsConstructor         // 添加：全参构造函数（兼容Builder）
 @Schema(description = "创建订单请求")
 public class CreateOrderDTO {
 
